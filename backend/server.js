@@ -4,6 +4,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
+const authMiddleware = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -62,6 +64,18 @@ try {
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Basic API rate limiter and auth for MVP
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: parseInt(process.env.RATE_LIMIT_MAX || '60', 10),
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+app.use('/api', apiLimiter);
+app.use('/api', authMiddleware);
+
 
 // ============================================================================
 // HEALTH CHECK
