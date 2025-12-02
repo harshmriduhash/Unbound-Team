@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Billing Portal — Unbound.team (MVP)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial; max-width:900px; margin:24px auto; color:#0f172a }
+    label { display:block; margin-top:12px; font-weight:600 }
+    input, select, button { padding:8px 10px; font-size:14px; margin-top:6px }
+    .row { display:flex; gap:8px; }
+    .card { border:1px solid #e6e9ee; padding:16px; border-radius:8px; margin-top:12px }
+    pre { background:#f8fafc; padding:12px; overflow:auto }
+    .muted { color:#6b7280 }
+  </style>
+</head>
+<body>
+  <h1>Billing Portal (MVP)</h1>
+  <p class="muted">This is a minimal billing portal for testing subscription status and actions. Use a server-side API key (x-api-key) or a Bearer token.</p>
+
+  <div class="card">
+    <label for="tenantId">Tenant ID (UUID or slug)</label>
+    <input id="tenantId" placeholder="e.g. unbound-team or tenant-uuid" />
+
+    <label for="userId">User ID / Email</label>
+    <input id="userId" placeholder="user@example.com or user UUID" />
+
+    <label for="apiKey">Admin API Key (x-api-key) or Bearer token</label>
+    <input id="apiKey" placeholder="Paste admin key or Bearer token" />
+
+    <div class="row">
+      <button id="btnFetch">Fetch Billing Status</button>
+      <button id="btnCancel">Cancel Subscription</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Create Subscription</h3>
+    <label for="plan">Plan</label>
+    <select id="plan"><option value="starter">starter</option><option value="growth">growth</option><option value="premium">premium</option></select>
+    <label for="country">Billing Country</label>
+    <input id="country" placeholder="IN or US" value="IN" />
+    <div class="row">
+      <button id="btnCreate">Create Subscription</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Result</h3>
+    <div id="result">No action yet.</div>
+  </div>
+
+  <script>
+    const tenantInput = document.getElementById('tenantId');
+    const userInput = document.getElementById('userId');
+    const apiInput = document.getElementById('apiKey');
+    const resultDiv = document.getElementById('result');
+
+    function show(obj) { resultDiv.innerHTML = '<pre>' + JSON.stringify(obj, null, 2) + '</pre>'; }
+
+    function getHeaders() {
+      const api = apiInput.value.trim();
+      const headers = { 'Content-Type': 'application/json' };
+      if (!api) return headers;
+      if (api.toLowerCase().startsWith('bearer ')) {
+        headers['Authorization'] = api;
+      } else {
+        headers['x-api-key'] = api;
+      }
+      return headers;
+    }
+
+    document.getElementById('btnFetch').onclick = async () => {
+      const tenant = tenantInput.value.trim();
+      const user = userInput.value.trim();
+      if (!tenant || !user) return alert('Enter tenantId and userId');
+
+      const url = `/api/billing/${encodeURIComponent(tenant)}/${encodeURIComponent(user)}`;
+      try {
+        const res = await fetch(url, { headers: getHeaders() });
+        const data = await res.json();
+        show({ status: res.status, data });
+      } catch (err) {
+        show({ error: err.message });
+      }
+    };
+
+    document.getElementById('btnCancel').onclick = async () => {
+      const tenant = tenantInput.value.trim();
+      const user = userInput.value.trim();
+      if (!tenant || !user) return alert('Enter tenantId and userId');
+      const url = `/api/billing/${encodeURIComponent(tenant)}/${encodeURIComponent(user)}/cancel`;
+      try {
+        const res = await fetch(url, { method: 'POST', headers: getHeaders() });
+        const data = await res.json();
+        show({ status: res.status, data });
+      } catch (err) {
+        show({ error: err.message });
+      }
+    };
+
+    document.getElementById('btnCreate').onclick = async () => {
+      const tenant = tenantInput.value.trim();
+      const user = userInput.value.trim();
+      const plan = document.getElementById('plan').value;
+      const country = document.getElementById('country').value || 'IN';
+      if (!tenant || !user) return alert('Enter tenantId and userId');
+
+      const url = '/api/billing/create-subscription';
+      const body = { tenantId: tenant, userId: user, plan, country };
+      try {
+        const res = await fetch(url, { method: 'POST', headers: getHeaders(), body: JSON.stringify(body) });
+        const data = await res.json();
+        show({ status: res.status, data });
+      } catch (err) {
+        show({ error: err.message });
+      }
+    };
+  </script>
+</body>
+</html>
