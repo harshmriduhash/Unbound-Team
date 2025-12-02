@@ -11,13 +11,14 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Service references (loaded safely)
-let taskQueue, orchestrator, queueWorker, partnerManager, automationScheduler;
+let taskQueue, orchestrator, queueWorker, partnerManager, automationScheduler, billing;
 const serviceStatus = {
   taskQueue: false,
   orchestrator: false,
   queueWorker: false,
   partnerManager: false,
-  automationScheduler: false
+  automationScheduler: false,
+  billing: false
 };
 
 // Safely load services with error handling
@@ -27,6 +28,14 @@ try {
   console.log('✅ Task Queue loaded');
 } catch (err) {
   console.warn('⚠️  Task Queue failed to load:', err.message);
+}
+
+try {
+  billing = require('./services/billing');
+  serviceStatus.billing = true;
+  console.log('✅ Billing service loaded');
+} catch (err) {
+  console.warn('⚠️  Billing service failed to load:', err.message);
 }
 
 try {
@@ -574,6 +583,124 @@ app.get('/api/automation/:tenantSlug/stats', async (req, res) => {
 });
 
 // ============================================================================
+// BILLING ENDPOINTS (Razorpay for India + Stripe for International)
+// ============================================================================
+
+// Create subscription
+app.post('/api/billing/create-subscription', async (req, res) => {
+  try {
+    if (!billing) {
+      return res.status(503).json({ error: 'Billing service not available' });
+    }
+
+    const { tenantId, userId, plan, country } = req.body;
+
+    if (!tenantId || !userId || !plan) {
+      return res.status(400).json({ error: 'tenantId, userId, and plan are required' });
+    }
+
+    const result = await billing.createSubscription(
+      tenantId,
+      userId,
+      plan,
+      country || 'IN'
+    );
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get billing status
+app.get('/api/billing/:tenantId/:userId', async (req, res) => {
+  try {
+    if (!billing) {
+      return res.status(503).json({ error: 'Billing service not available' });
+    }
+
+    const { tenantId, userId } = req.params;
+    const status = await billing.getBillingStatus(tenantId, userId);
+
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Cancel subscription
+app.post('/api/billing/:tenantId/:userId/cancel', async (req, res) => {
+  try {
+    if (!billing) {
+      return res.status(503).json({ error: 'Billing service not available' });
+    }
+
+    const { tenantId, userId } = req.params;
+    const result = await billing.cancelSubscription(tenantId, userId);
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get pricing tiers
+app.get('/api/billing/pricing', (req, res) => {
+  try {
+    if (!billing) {
+      return res.status(503).json({ error: 'Billing service not available' });
+    }
+
+    res.json({
+      tiers: billing.PRICING_TIERS,
+      message: 'Pricing in INR for India, USD for US, EUR for Europe'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// WEBHOOK ENDPOINTS (No auth required; verify signature on handler)
+// ============================================================================
+
+// Razorpay webhook
+app.post('/webhooks/razorpay', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    if (!billing) {
+      return res.status(503).json({ error: 'Billing service not available' });
+    }
+
+    // In production, verify webhook signature using razorpay.utils.verifyWebhookSignature
+    const event = JSON.parse(req.body.toString());
+    await billing.handleRazorpayWebhook(event);
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Razorpay webhook error:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Stripe webhook
+app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    if (!billing) {
+      return res.status(503).json({ error: 'Billing service not available' });
+    }
+
+    // In production, verify webhook signature using stripe.webhooks.constructEvent
+    const event = JSON.parse(req.body.toString());
+    await billing.handleStripeWebhook(event);
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Stripe webhook error:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// ============================================================================
 // START SERVER
 // ============================================================================
 
@@ -597,6 +724,7 @@ ${serviceStatus.taskQueue ? '✅' : '❌'} Task Queue
 ${serviceStatus.queueWorker ? '✅' : '❌'} Queue Worker
 ${serviceStatus.partnerManager ? '✅' : '❌'} Partner Manager
 ${serviceStatus.automationScheduler ? '✅' : '❌'} Automation Scheduler
+${serviceStatus.billing ? '✅' : '❌'} Billing (Razorpay + Stripe)
 
 🚀 ${servicesLoaded === totalServices ? 'All systems ready!' : 'Running in degraded mode - some features may be unavailable'}
   `);

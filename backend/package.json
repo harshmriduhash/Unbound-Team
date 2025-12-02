@@ -30,7 +30,9 @@
     "node-cron": "^3.0.3",
     "cheerio": "^1.0.0-rc.12",
     "express-rate-limit": "^6.7.0",
-    "jsonwebtoken": "^9.0.0"
+    "jsonwebtoken": "^9.0.0",
+    "razorpay": "^2.9.1",
+    "stripe": "^14.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"
