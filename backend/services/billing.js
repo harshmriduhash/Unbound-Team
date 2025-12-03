@@ -5,6 +5,7 @@
 
 const Razorpay = require('razorpay');
 const Stripe = require('stripe');
+const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -77,84 +78,65 @@ async function createSubscription(tenantId, userId, plan, country = 'IN') {
     let subscriptionId = null;
 
     if (provider === 'razorpay') {
-      // Create Razorpay customer and plan
-      const customer = await razorpay.customers.create({
-        email: userId, // Use userId as email placeholder; should be actual email in production
-        notify_sms: 1,
-        notify_email: 1,
-        description: `${tenantId} - ${plan} tier`
-      });
-
-      // Create a plan in Razorpay
-      const razorpayPlan = await razorpay.plans.create({
-        period: 'monthly',
-        interval: 1,
-        period_start: Math.floor(Date.now() / 1000),
+      // Create Razorpay order for checkout (not subscription yet; frontend will handle checkout)
+      const razorpayOrder = await razorpay.orders.create({
         amount: tier.monthly_price_inr * 100, // Convert to paise
-        currency_code: 'INR',
-        description: `${tier.name} plan - ${plan}`
-      });
-
-      // Create subscription
-      const subscription = await razorpay.subscriptions.create({
-        plan_id: razorpayPlan.id,
-        customer_notify: 1,
-        quantity: 1,
-        total_count: 12, // 1 year
-        start_at: Math.floor(Date.now() / 1000)
-      });
-
-      subscriptionId = subscription.id;
-      paymentData = {
-        provider: 'razorpay',
-        customer_id: customer.id,
-        subscription_id: subscription.id,
-        plan_id: razorpayPlan.id
-      };
-    } else {
-      // Create Stripe subscription
-      const customer = await stripe.customers.create({
-        metadata: {
+        currency: 'INR',
+        receipt: `order-${tenantId}-${userId}`,
+        notes: {
           tenantId,
           userId,
-          country
+          plan,
+          name: tier.name,
+          description: `${tier.name} plan subscription`
         }
       });
 
-      // Find or create Stripe price
-      const priceAmount = Math.round(tier.monthly_price_usd * 100); // Convert to cents
-      const stripePrices = await stripe.prices.list({
-        lookup_keys: [`${plan}_monthly_usd`],
-        limit: 1
+      subscriptionId = razorpayOrder.id;
+      paymentData = {
+        provider: 'razorpay',
+        order_id: razorpayOrder.id,
+        razorpayKey: process.env.RAZORPAY_KEY_ID
+      };
+    } else {
+      // Create Stripe checkout session (not subscription yet; frontend will redirect to checkout)
+      const checkoutSession = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'subscription',
+        success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/billing?status=success`,
+        cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/billing?status=cancel`,
+        client_reference_id: `${tenantId}-${userId}`,
+        metadata: {
+          tenantId,
+          userId,
+          plan,
+          country
+        },
+        line_items: [
+          {
+            price_data: {
+              currency: country === 'EU' ? 'eur' : 'usd',
+              product_data: {
+                name: tier.name,
+                description: `${plan} plan subscription`
+              },
+              unit_amount: Math.round(
+                (country === 'EU' ? tier.monthly_price_eur : tier.monthly_price_usd) * 100
+              ),
+              recurring: {
+                interval: 'month'
+              }
+            },
+            quantity: 1
+          }
+        ]
       });
 
-      let priceId;
-      if (stripePrices.data.length > 0) {
-        priceId = stripePrices.data[0].id;
-      } else {
-        const newPrice = await stripe.prices.create({
-          currency: 'usd',
-          unit_amount: priceAmount,
-          recurring: { interval: 'month' },
-          product_data: { name: tier.name },
-          lookup_key: `${plan}_monthly_usd`
-        });
-        priceId = newPrice.id;
-      }
-
-      const subscription = await stripe.subscriptions.create({
-        customer: customer.id,
-        items: [{ price: priceId }],
-        payment_behavior: 'default_incomplete',
-        expand: ['latest_invoice.payment_intent']
-      });
-
-      subscriptionId = subscription.id;
+      subscriptionId = checkoutSession.id;
       paymentData = {
         provider: 'stripe',
-        customer_id: customer.id,
-        subscription_id: subscription.id,
-        client_secret: subscription.latest_invoice.payment_intent.client_secret
+        session_id: checkoutSession.id,
+        stripeCheckoutUrl: checkoutSession.url
       };
     }
 
@@ -183,11 +165,44 @@ async function createSubscription(tenantId, userId, plan, country = 'IN') {
       plan,
       provider,
       paymentData,
-      tier
+      tier,
+      razorpayOrder: provider === 'razorpay' ? { id: paymentData.order_id, amount: tier.monthly_price_inr * 100, currency: 'INR', notes: { name: tier.name, description: `${tier.name} plan` } } : null,
+      razorpayKey: provider === 'razorpay' ? paymentData.razorpayKey : null,
+      stripeCheckoutUrl: provider === 'stripe' ? paymentData.stripeCheckoutUrl : null
     };
   } catch (error) {
     console.error('Create subscription error:', error);
     throw error;
+  }
+}
+
+// ============================================================================
+// WEBHOOK SIGNATURE VERIFICATION
+// ============================================================================
+
+function verifyRazorpayWebhook(body, signature) {
+  try {
+    const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET);
+    shasum.update(JSON.stringify(body));
+    const digest = shasum.digest('hex');
+    return digest === signature;
+  } catch (error) {
+    console.error('Razorpay signature verification error:', error);
+    return false;
+  }
+}
+
+function verifyStripeWebhook(body, signature) {
+  try {
+    const event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+    return event;
+  } catch (error) {
+    console.error('Stripe signature verification error:', error);
+    return null;
   }
 }
 
@@ -455,6 +470,8 @@ module.exports = {
   createSubscription,
   handleRazorpayWebhook,
   handleStripeWebhook,
+  verifyRazorpayWebhook,
+  verifyStripeWebhook,
   getBillingStatus,
   cancelSubscription,
   calculateRevenueShare,

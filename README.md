@@ -8,69 +8,75 @@ A fully automated AI workforce that solves entrepreneur problems 24/7, grows thr
 
 ## 🎯 What We Built (Phase 1 - COMPLETE ✅)
 
-### Core Infrastructure
+### SaaS MVP Core Features
 
-1. **API Cost Protection System** - Never overspend on AI
-   - $5/day spending cap with automatic enforcement
-   - Smart model routing: Gemini (free) → GPT-4o-mini → Claude Haiku → Perplexity → Claude Sonnet
-   - Real-time cost tracking and alerts
-   - Discord notifications for spending thresholds
+1. **Multi-Tenant Billing System** - Razorpay (India) + Stripe (International)
+   - Tiered pricing: Free, Starter, Growth, Premium
+   - Server-side checkout with Razorpay order creation and Stripe session
+   - Webhook signature verification (prevents payment spoofing)
+   - Revenue tracking and partner revenue share
 
-2. **AI Orchestrator** - Multi-model intelligence
-   - Automatic fallback when models hit limits
-   - Task-based routing (content generation, research, analysis)
-   - Usage analytics and cost optimization
-   - Supports: Gemini, ChatGPT, Claude, Perplexity
+2. **User Authentication** - Supabase Auth
+   - Email/password signup and login
+   - Session management via JWT
+   - Protected routes with `PrivateRoute` component
+   - Tenant isolation and multi-tenant support
 
-3. **Task Queue System** - Background job processing
-   - 7 specialized queues: Lead Generation, Content Creation, Market Research, Landing Pages, Email Marketing, Discovery, Outreach
-   - Bull + Redis for reliable queue management
-   - Automatic retries with exponential backoff
-   - Job status tracking and monitoring
+3. **React Frontend** - Vite + React 18
+   - Home page with hero and features
+   - Authentication pages (signup/login)
+   - Protected dashboard with problems/products listing
+   - Billing page with checkout integration
+   - Tailwind CSS styling
+   - API proxy for dev (Vite → backend)
 
-4. **Discord Notifications** - Real-time alerts
-   - Job completion/failure notifications
-   - Spending warnings (50%, 75%, 90%, 100% of daily cap)
-   - Daily summary reports
-   - Stalled job alerts
+4. **Express Backend** - Production-ready API
+   - API key + JWT authentication middleware
+   - Rate limiting (60 req/min per IP)
+   - Billing endpoints (create subscription, get status, cancel)
+   - Webhook endpoints with signature verification
+   - Static frontend serving in production
+   - Graceful service initialization and shutdown
 
-5. **Admin Dashboard** - Monitor everything
-   - Active jobs in real-time
-   - Queue statistics (waiting, active, completed, failed)
-   - AI model usage and costs
-   - Daily spending tracker
-   - Auto-refresh every 5 seconds
+5. **Database Schema** - Multi-tenant Supabase/Postgres
+   - `tenants` - Partner/workspace tenants
+   - `tenant_users` - Users with plan, billing details
+   - `tenant_revenue` - Revenue tracking by month
+   - `tenant_user_usage` - Per-user usage metering
+   - `problems`, `products_listed` - Community content
+   - Support for Razorpay and Stripe subscription tracking
 
-6. **Lead Generation MVP** - Autonomous prospect finding
-   - Scrapes Reddit, Indie Hackers, Product Hunt, blogs
-   - AI-powered lead enrichment and scoring
-   - Pain point identification and outreach strategy generation
-   - CSV/JSON export for easy integration
+6. **CI/CD Pipeline** - GitHub Actions
+   - Auto-build frontend (Vite) and backend (Node syntax check)
+   - Optional Vercel deploy for frontend
+   - Optional Railway deploy for backend
+   - Artifact upload for multi-stage deployment
 
 ---
 
 ## 🛠️ Tech Stack
 
 ### Backend
-- **Framework:** Node.js + Express
-- **Queue:** Bull + Redis
-- **AI APIs:** Anthropic Claude, OpenAI GPT, Google Gemini, Perplexity
-- **Database:** Supabase (PostgreSQL)
-- **Scraping:** Axios + Cheerio
-- **Cron Jobs:** node-cron
-- **Notifications:** Discord Webhooks
+- **Framework:** Node.js 18+ + Express 4.18
+- **Billing:** Razorpay SDK, Stripe SDK
+- **Database:** Supabase (PostgreSQL) + Supabase Auth
+- **Rate Limiting:** express-rate-limit
+- **Auth:** jsonwebtoken (JWT)
+- **AI APIs:** Anthropic Claude, OpenAI GPT, Google Gemini (optional)
+- **Queue:** Bull + Redis (optional for background jobs)
 
 ### Frontend
-- **Hosting:** Vercel
-- **Framework:** Vanilla HTML/CSS/JS with Tailwind
-- **Charts:** Chart.js
-- **Database:** Supabase Client
+- **Build Tool:** Vite 5.0
+- **Framework:** React 18.2 + React Router 6.14
+- **Database Client:** @supabase/supabase-js
+- **Styling:** Tailwind CSS (CDN)
+- **HTTP Client:** Axios
 
 ### Infrastructure
-- **Backend Hosting:** Railway/Render (pending deployment)
-- **Redis:** Managed Redis instance
-- **File Storage:** Supabase Storage
-- **Monitoring:** Discord + Admin Dashboard
+- **Production Deploy:** Railway (backend), Vercel (frontend), or AWS
+- **Database:** Supabase (managed PostgreSQL)
+- **CI/CD:** GitHub Actions
+- **Webhooks:** Razorpay, Stripe
 
 ---
 

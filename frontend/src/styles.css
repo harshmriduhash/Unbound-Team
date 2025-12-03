@@ -1,0 +1,3 @@
+/* Minimal styles — Tailwind CDN used for rapid MVP styles; include any overrides here. */
+html,body,#root { height: 100%; }
+body { background: #f8fafc; }

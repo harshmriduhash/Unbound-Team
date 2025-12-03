@@ -6,6 +6,7 @@ const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const authMiddleware = require('./middleware/auth');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -84,6 +85,15 @@ const apiLimiter = rateLimit({
 
 app.use('/api', apiLimiter);
 app.use('/api', authMiddleware);
+
+// Serve frontend static assets when built (production)
+const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
 
 
 // ============================================================================
@@ -671,8 +681,16 @@ app.post('/webhooks/razorpay', express.raw({ type: 'application/json' }), async 
       return res.status(503).json({ error: 'Billing service not available' });
     }
 
-    // In production, verify webhook signature using razorpay.utils.verifyWebhookSignature
-    const event = JSON.parse(req.body.toString());
+    const signature = req.headers['x-razorpay-signature'];
+    const body = req.body;
+
+    // Verify webhook signature
+    if (!billing.verifyRazorpayWebhook(body, signature)) {
+      console.warn('Razorpay webhook signature verification failed');
+      return res.status(401).json({ error: 'Unauthorized: invalid signature' });
+    }
+
+    const event = JSON.parse(body.toString());
     await billing.handleRazorpayWebhook(event);
 
     res.json({ received: true });
@@ -689,8 +707,16 @@ app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (r
       return res.status(503).json({ error: 'Billing service not available' });
     }
 
-    // In production, verify webhook signature using stripe.webhooks.constructEvent
-    const event = JSON.parse(req.body.toString());
+    const signature = req.headers['stripe-signature'];
+    const body = req.body;
+
+    // Verify webhook signature
+    const event = billing.verifyStripeWebhook(body, signature);
+    if (!event) {
+      console.warn('Stripe webhook signature verification failed');
+      return res.status(401).json({ error: 'Unauthorized: invalid signature' });
+    }
+
     await billing.handleStripeWebhook(event);
 
     res.json({ received: true });
